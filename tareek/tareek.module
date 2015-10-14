@@ -1,0 +1,382 @@
+<?php
+
+/**
+ *
+ */
+function tareek_menu() {
+
+  //create menu item for My Company 
+  $items = array();
+  $items['returning_to_allah_main'] = array(
+     'title' => 'العائدون إلى الله',
+     'page callback' => 'tareek_returning_to_allah_link',
+    'access arguments' => array('access content'),
+      'weight' => -100,
+    );
+  $items['spirit_of_worship_main'] = array(
+    'title' => 'روح العبادة',
+    'page callback' => 'tareek_spirit_of_worship_link',
+    'access arguments' => array('access content'),
+    'weight' => -100,
+  );
+  $items['praying_is_life_main'] = array(
+    'title' => 'الدعاء حياة',
+    'page callback' => 'tareek_praying_is_life_link',
+    'access arguments' => array('access content'),
+    'weight' => -100,
+  );
+  $items['question_and_answer_main'] = array(
+    'title' => 'سؤال و جواب',
+    'page callback' => 'tareek_question_and_answer_link',
+    'access arguments' => array('access content'),
+    'weight' => -100,
+  );
+  $items['where_are_you_main'] = array(
+    'title' => 'انت فين على الطريق',
+    'page callback' => 'tareek_where_are_you_link',
+    'access arguments' => array('access content'),
+    'weight' => -100,
+  );
+  return $items;
+} 
+
+
+/**
+ *
+ */
+function tareek_main_menus_nid($type) {
+   $nid = '';
+  $query = db_select('node', 'n')
+       ->fields('n')
+  ->condition('status', 1, '=')
+  ->condition('type', $type, '=')
+   ->orderBy('created', 'DESC')
+   ->range(0,1);
+  $result = $query->execute();
+  foreach ($result as $record) {
+     $nid = $record->nid;
+  }
+ return $nid; 
+} 
+
+/**
+ *
+ */
+function tareek_returning_to_allah_link() {
+  $nid = tareek_main_menus_nid('returning_to_allah'); 
+  drupal_goto('node/' . $nid); 
+}
+
+/**
+ *
+ */
+function tareek_spirit_of_worship_link() {
+  $nid = tareek_main_menus_nid('spirit_of_worship'); 
+  drupal_goto('node/' . $nid); 
+}
+
+/**
+ *
+ */
+function tareek_praying_is_life_link () {
+  $nid = tareek_main_menus_nid('praying_is_life'); 
+  drupal_goto('node/' . $nid); 
+}
+ 
+/**
+ *
+ */
+function tareek_question_and_answer_link() {
+ $nid = tareek_main_menus_nid('question_and_answer'); 
+  drupal_goto('node/' . $nid); 
+}
+
+/**
+ *
+ */
+function tareek_where_are_you_link() {
+  $nid = tareek_main_menus_nid('quiz'); 
+  drupal_goto('node/' . $nid . '/take'); 
+
+}
+
+/**
+ * Hook_view_alter
+ */
+function tareek_node_view_alter(&$build){ 
+
+  // Remove "Add new comment" link
+  unset($build['links']['comment']['#links']['comment-add']);
+  // Remove "Read more" link
+  unset($build['links']['node']['#links']['node-readmore']);
+  // Remove "1 comment" link
+  unset($build['links']['comment']['#links']['comment-comments']);
+    
+}
+
+/**
+ *
+ */
+function tareek_field_group_pre_render(& $element, $group, & $form) {
+
+  // You can prepare some variables to use in the logic.
+
+
+  if ($group->group_name == 'group_downloads_icons') {
+
+    $view_mode = isset($form['#view_mode']) ? $form['#view_mode'] : 'form';
+    $id = $form['#entity_type'] . '_' . $form['#bundle'] . '_' . $view_mode . '_' . $group->group_name;
+
+    // Each formatter type can have whole different set of element properties.
+    switch ($group->format_type) {
+
+    // Normal or collapsible div.
+    case 'div':
+
+      $add['group_header_links'] = array(
+        '#markup' => "<span class='soundcloud_node_link'> Sound cloud </span><span class='episode_summary_node_link'>ملخص الحلقة </span>",
+        '#weight' => $group->weight,
+        '#id' => $id,
+      );
+      $element += $add;
+
+      break;
+    break;
+  }
+  }
+}
+
+/**
+ *
+ */
+function tareek_node_view($node, $view_mode) {
+
+    if ($node->type == "returning_to_allah"){
+        if ($view_mode == 'full'){
+            $node->content['tabs_links'] = array(
+                 "#markup"=> '<div id="returning_to_allah_tabs_links"><span class="inner_top_links_1 active">الصورة</span><span class="inner_top_links_2">الفيديو </span></div>',
+                 "#weight"=> -10
+              );  
+           }
+         return $node;
+    }   
+}
+
+
+/**
+ * Implements hook_block_info().
+ */
+function tareek_block_info() {
+  $blocks = array();
+
+  $blocks['home_el_duaa_hayaa'] = array(
+    'info' => t('الدعاء حياة'),
+  );
+
+  $blocks['home_el_3a2edon_ela_allah'] = array(
+    'info' => t('العائدون إلى الله'),
+  );
+
+  $blocks['home_ro7_el_ebada'] = array(
+    'info' => t('روح العباده'),
+  );
+
+  $blocks['home_question_and_answer'] = array(
+    'info' => t('سؤال  و  جواب'),
+  );
+  return $blocks;
+}
+
+/**
+* Implements hook_block_view().
+*/
+function tareek_block_view($delta = '') {
+  $block = array();
+
+  switch ($delta) {
+    case 'home_el_duaa_hayaa':
+      $title = 'الدعاء حياة';
+      $description = ' الدعاء احياء للقلوب فهو سمة العبودية، وروضة القلب، وجنة الدنيا. ';
+      $block['subject'] = '';
+      $block['content'] = tareek_home_blocks_content('praying_is_life', $title, $description);
+      break;
+   case 'home_el_3a2edon_ela_allah':
+      $title = 'العائدون إلى الله';
+      $description = 'تعرف على قصص من أسلموا واستشعروا لذة الإيمان والطاعة.';
+       
+      $block['subject'] = '';
+      $block['content'] = tareek_home_blocks_content('returning_to_allah', $title, $description);
+      break;
+   case 'home_ro7_el_ebada':
+      $title = 'روح العبادة';
+      $description = ' أروع الكلام عن إحساس القلب حال تأدية العبادة.';
+      
+      $block['subject'] = '';
+      $block['content'] = tareek_home_blocks_content('spirit_of_worship', $title, $description);
+      break;
+   case 'home_question_and_answer':
+      $title = 'سؤال وجواب';
+      $description = ' إجابات لأسئلة الزائرين والمُشاهدين عن العبادات وكيفية ادائها.';
+      
+      $block['subject'] = '';
+      $block['content'] = tareek_home_blocks_content('question_and_answer', $title, $description);
+      break;
+  }
+
+  return $block;
+}
+
+/**
+ *
+ */
+function tareek_home_blocks_content($type, $title, $description) {
+  $output = '';
+
+  $nid = '';
+  $query = db_select('node', 'n')
+       ->fields('n')
+  ->condition('status', 1, '=')
+  ->condition('type', $type, '=')
+   ->orderBy('created', 'DESC')
+   ->range(0,1);
+  $result = $query->execute();
+  foreach ($result as $record) {
+     $nid = $record->nid;
+  }
+  $more = l('المزيد', 'node/' . $nid, array('html' => true, 'attributes'=> array('class'=> array('blocks_more_link'))));
+  $output .= l(theme('image', array('path' => drupal_get_path('module', 'tareek') . '/images/' . $type . '.jpg')), 'node/' . $nid, array('html' => true)) . "<div class='transition_blocks_div'><h3>$title </h3><p> $description </p> $more</div>";
+  return $output;
+}
+
+/**
+ *
+ */
+function tareek_form_alter (&$form, &$form_state, $form_id) {
+ global $user;
+ switch ($form_id) {
+
+    case 'user_register_form':
+    case 'user_login':
+    case 'user_login_block':
+
+    //   $img = drupal_get_path('module', 'twitter_signin') . '/images/' . variable_get('twitter_signin_button', 'Sign-in-with-Twitter-lighter-small.png');
+      $img = drupal_get_path('theme', 'bootstrap_subtheme') . '/images/twitter_connect.png';
+      $form['social_connect'] = array(
+       '#markup' => "<div id='social_connect_login'>".  fboauth_action_display('connect') . l(theme('image', array('path' => $img, 'alt' => t('Sign in with Twitter'))), 'twitter/redirect', array('html' => TRUE)) . "</div>",
+       '#weight' => 800,
+      );
+   
+     break;
+  }
+
+  if($form_id == "comment_node_main_comments_form"
+
+    || $form_id == 'comment_node_episodes_form'
+    || $form_id == 'comment_node_praying_is_life_form'
+    || $form_id == 'comment_node_question_and_answer_form'
+    || $form_id == 'comment_node_quiz_form'
+    || $form_id == 'comment_node_returning_to_allah_form'
+    || $form_id == 'comment_node_said_about_worship_form'
+    || $form_id == 'comment_node_spirit_of_worship_form' 
+    || $form_id == 'comment_node_walking_on_the_path_form'
+
+    ) {
+     if ($user->uid == 0) {
+      $form['login_link_replaced'] = array (
+         '#markup' => '<a href="/user/login">' . t('Save') . '</a>',
+      );
+       unset($form['actions']['submit']); 
+    }
+   // $form['actions']['submit']['#value'] = 'saaa';// '<a href="/user/login">Save</a>';
+   // $form['actions']['submit']['#type'] = 'button';
+   // $form['#submit'][] = 'tareek_comment_submit_callback';
+
+  }
+
+  if ($form_id == 'node_type_form') {
+
+      $form['comment']['comment_default_per_page']['#options'] = drupal_map_assoc(array(3, 5, 10, 30, 50, 70, 90, 150, 200, 250, 300));;
+  } 
+  if($form_id == 'simplenews_subscriptions_multi_block_form') {
+    $form['mail']['#title'] = '';
+    $form['mail']['#default_value'] = 'البريد الألكترونى';
+    $form['mail']['#attributes'] = array( 'onblur' => "if (this.value == '') {this.value = 'البريد الألكترونى'}", 'onfocus' => "if (this.value == 'البريد الألكترونى') {this.value = ''}", );
+    $form['subscribe']['#value'] = 'اشترك';
+    unset ($form['unsubscribe']); 
+
+  }  
+}
+
+/**
+ *
+ */
+function tareek_comment_submit_callback() {
+ // print_r("inside");
+ // exit();
+}
+
+
+/**
+ *
+ */
+function tareek_form_comment_form_alter(&$form, &$form_state, &$form_id) {
+  $form['comment_body']['#after_build'][] = 'configure_comment_form';
+  if ($form_id == 'comment_node_main_comments_form') { 
+    $form['#submit'][] = 'tareek_custom_comment_submit_handler';
+  }
+}
+
+/**
+ *
+ */
+function configure_comment_form(&$form) {
+  unset($form[LANGUAGE_NONE][0]['format']);
+  return $form;
+}
+
+/**
+ * 
+ */
+function tareek_custom_comment_submit_handler($form, &$form_state) {
+  $form_state['redirect'] = 'node';
+}
+
+/**
+ *
+ */
+function tareek_link_alter(&$links, $node, $comment = NULL) {
+  unset($links['comment_reply']);
+}
+
+/**
+ *
+ */
+function tareek_block_view_alter(&$data, $block) {
+  if ($block->delta == 'comment_form_block') {
+    // Get the active menu object.
+    if ($node = menu_get_object()) {
+      // Make sure comments aren't closed.
+      if (($node->comment !== 0) && (arg(2) == NULL)) {
+        // Render the comments and comment form (access checks, etc. are done
+        // by comment_node_page_additions()).
+        $block->content = comment_block_static_comments($node->nid, true, $node);
+        
+
+      }
+       if (($node->comment !== 0) && ( arg(2) == 'take' || arg(2) == 'results')) {
+      // global $commentsblock_block_mode;
+
+        // Reset the default pager, it is set at render the node...
+        PagerDefault::$maxElement--;
+
+    //   $commentsblock_block_mode = TRUE;
+//        $build = node_view($node);
+  //      $commentsblock_block_mode = FALSE;
+
+        $block->content =  render(comment_node_page_additions($node)); //drupal_render($build['comments']);
+       }
+    }
+  }
+  return $block;
+}
+

@@ -1,0 +1,10 @@
+name = yebab albums
+description = Yebab albums module 
+core = 6.x
+package = Yebab
+
+dependencies[] = imageapi
+dependencies[] = image
+//dependencies[] = imagebrowser
+dependencies[] = imagecache
+dependencies[] = imagecache_canvasactions

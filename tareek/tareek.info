@@ -1,0 +1,9 @@
+name = Ala Tareek Allah
+description = Ala Tareek Allah Main Module.
+core = 7.x
+
+
+core = "7.x"
+project = "Ala Tareek Allah"
+datestamp = "1330097138"
+

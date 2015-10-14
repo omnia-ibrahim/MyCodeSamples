@@ -1,0 +1,108 @@
+<?php
+/**
+ * hook_install()
+ */
+function yebab_workflow_install() {
+  drupal_install_schema('yebab_workflow');
+}
+
+/**
+ * Implementation of hook_uninstall()
+ */
+function yebab_workflow_uninstall() {
+  drupal_uninstall_schema('yebab_workflow');
+}
+
+/**
+ * Implementation of hook_schema
+ */
+function yebab_workflow_schema() {
+  $schema['yebab_workflow_states'] = array(
+    'description' => 'workflow states table',
+    'fields' => array(
+      'nid' => array(
+        'description' => 'The primary identifier for a node.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'vid' => array(
+        'description' => 'The vid of the node.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'uid' => array(
+        'description' => 'The user id.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'state' => array(
+        'description' => 'The state name of the node',
+        'type'        => 'varchar',
+        'length'      => 255,
+        'default'     => '',
+      ),
+		  'comment' =>array(
+		    'description' => 'The comment add for that node',
+		    'type' => 'varchar',
+		    'not null' => TRUE,
+		    'length' => 255,  
+        'default' => '',
+		 ),
+		 'submit' => array(
+        'description' => 'The node submitted or not.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('nid', 'vid'),
+  );
+  $schema['yebab_workflow_log'] = array(
+    'fields' => array(
+      'logid' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
+      'uid' => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+      'state' => array('type' => 'varchar', 'length' => 16, 'not null' => TRUE, 'default' => ''),
+      'title' => array('type' => 'varchar', 'length' => 128, 'not null' => TRUE, 'default' => ''),
+      'message' => array('type' => 'text', 'size' => 'big',  'not null' => TRUE),
+      'timestamp' => array('type' => 'int', 'not null' => TRUE, 'default' => 0)
+    ),
+    'primary key' => array('logid'),
+  );
+  $schema['yebab_workflow_custom_states'] = array(
+    'fields' => array(
+      'state_id' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
+      'state_name' => array('type' => 'text', 'size' => 'big',  'not null' => TRUE),
+     ),
+    'primary key' => array('state_id'),
+   );
+  return $schema;
+}
+
+/**
+ * Function to add field last publish date in yebab_workflow_states table
+ */
+function yebab_workflow_update_1 () {
+  $ret = array();
+  db_add_field($ret, 'yebab_workflow_states', 'last_publish_date',   array('type' => 'int', 'not null' => TRUE, 'default' => 0));
+  return $ret;
+}
+
+
+/**
+ * Function to add indexes to workflow module table fields
+ */
+function yebab_workflow_update_2() {
+  $ret = array ();
+  // States table
+  db_add_index ($ret, 'yebab_workflow_states', 'nid_uid', array('nid', 'uid'));
+
+  return $ret;
+}

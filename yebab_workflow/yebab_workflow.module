@@ -1,0 +1,765 @@
+<?php
+
+/**
+ * Implementing hook_perm
+ */
+function yebab_workflow_perm() {
+  return array('administer workflow', 'yebab workflow approval', 'yebab edit any content');
+}
+
+/**
+ * Implementing hook_menu
+ */
+function yebab_workflow_menu() {
+  $items = array();
+  global $user;
+  $items['node/%node/yebab-workflow'] = array(
+    'title' => 'Workflow',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('yebab_workflow_approval_form'),
+    'access callback' => '_yebab_workflow_access',
+    'access arguments' => array(1),
+    'weight' => 5,
+    'type' => MENU_LOCAL_TASK,
+  );
+  $items['admin/settings/yebab-workflow'] = array(
+    'access arguments' => array('administer workflow'),
+    'description' => 'Configure workflow settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('yebab_workflow_settings'),
+    'title' => 'yebab workflow',
+  );
+  $items['yebab-workflow/log'] = array(
+    'access callback' => '_yebab_workflow_views_access',
+    'access arguments' => array(1),
+    'description' => 'Log views page.',
+    'page callback' => 'yebab_workflow_views_page',
+    'page arguments' => array(1),
+    'title' => 'Log view page for workflow',
+  ); 
+
+  $items['yebab-workflow/editor'] = array(
+    'access callback' => '_yebab_workflow_views_access',
+    'access arguments' => array(1),
+    'description' => 'Admin view page for workflow.',
+    'page callback' => 'yebab_workflow_views_page',
+    'page arguments' => array(1),
+    'title' => 'Admin view page',
+  );
+  $items['yebab-workflow/states'] = array(
+    'access callback' => '_yebab_workflow_views_access',
+    'access arguments' => array(1),
+    'description' => 'Configure workflow settings.',
+    'page callback' => 'yebab_workflow_list_states',
+    'title' => 'List states',
+  );
+  $items['yebab-workflow/states/list'] = array(
+    'title' => 'List states',
+    'access callback' => '_yebab_workflow_views_access',
+    'access arguments' => array(1),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => 1, 
+  );  
+  $items['yebab-workflow/states/add'] = array(
+    'access callback' => '_yebab_workflow_views_access',
+    'access arguments' => array(1),
+    'description' => 'Configure workflow settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('yebab_workflow_add_states'),
+    'title' => 'Add/Edit state',
+    'type' => MENU_LOCAL_TASK,
+  );  
+  $items['yebab-workflow/states/delete/%' ] = array(
+    'access callback' => '_yebab_workflow_views_access',
+    'access arguments' => array(1),
+    'description' => 'Configure workflow settings.',
+    'page callback' => 'yebab_workflow_delete_state',
+    'page arguments' => array (3),
+    'type' => MENU_CALLBACK,
+  );  
+  return $items;
+}
+
+/**
+ * implementation of hook_menu_alter
+ */
+function yebab_workflow_menu_alter(&$items) {
+ 
+  // define a new permission for node editing to prevent editors from editing nodes
+  // by not giving them this permission
+ // $items['node/%node/edit']['access callback'] = 'yebab_workflow_remove_edit_permission';
+}
+ 
+/**
+ *
+ */
+ /*
+function yebab_workflow_remove_edit_permission() {
+  if (user_access('administer nodes')) {
+    return true;
+  }
+  $nid = arg(1);  
+  if (isset($nid) && is_numeric($nid)) {
+    $node = node_load($nid);
+    if ($node->status && !user_access('yebab edit any content')) {
+      return false;
+    }
+    elseif (!$node->status && user_access('edit own ' . $node->type . ' content')) {
+      return true;
+    }
+  }
+}
+*/
+
+/**
+ * Views access function
+ */
+function _yebab_workflow_views_access ($role) {
+  global $user;
+  $moderator_rid = variable_get('yebab_workflow_moderators_role', '');
+  $chief_rid = variable_get('yebab_workflow_chiefeditors_role', '');
+  switch ($role) {
+    case 'editor' :
+      if (isset($user->roles[$chief_rid]) || $user->uid == 1) {
+        return true;
+      }
+      break;
+   case 'moderator':
+
+     if (isset($user->roles[$moderator_rid]) || $user->uid == 1) {
+        return true;
+      }
+     break;
+   case 'states':
+     if (isset($user->roles[$chief_rid]) || $user->uid == 1) {
+        return true;
+      }
+     break;
+   case 'log':
+
+     if (isset($user->roles[$chief_rid]) || $user->uid == 1) {
+        return true;
+      }
+     break;
+  }
+}
+
+/**
+ *
+ */
+function yebab_workflow_views_page($role) {
+  $output = '';
+  global $user;
+  switch ($role) {
+    case 'editor':
+      $view = views_get_view('yebab_workflow');
+      $display_id = 'page_1';
+      if (!empty($view)) {
+        $output .= $view->execute_display($display_id, array());
+        return $output;
+      }
+      break;
+    case 'moderator':
+      $view = views_get_view('yebab_workflow_moderator');
+      $display_id = 'page_1';
+      if (!empty($view)) {
+        $output .= $view->execute_display($display_id, array(arg(2)));
+        return $output;
+      }
+      break;
+   case 'log':
+      $view = views_get_view('yebab_workflow_log');
+      $display_id = 'page_1';
+      if (!empty($view)) {
+        $output .= $view->execute_display($display_id, array());
+        return $output;
+      }
+      break;
+  }
+}
+
+/**
+ *
+ */
+function yebab_workflow_list_states() {
+  $header = array(
+    array('data' => t('State'), ),
+    array('data' => t('Edit'), ),
+    array('data' => t('Delete'), ),
+  );
+  $tablesort = tablesort_sql($header);
+
+  $count_sql = "SELECT COUNT(*) FROM {yebab_workflow_custom_states} cs";
+  $pager_sql = "SELECT cs.state_id, cs.state_name FROM {yebab_workflow_custom_states} cs";
+ 
+  $count_sql = db_rewrite_sql($count_sql, 'cs');
+  $pager_sql = db_rewrite_sql($pager_sql, 'cs');
+  $result = pager_query($pager_sql . $tablesort, 50, 0, $count_sql, 0);
+
+  $rows = array();
+
+  while ($event = db_fetch_object($result)) {
+    $rows[] = array(
+      t($event->state_name),
+      l(t('Edit'), 'yebab-workflow/states/add/' . $event->state_id),
+      l(t('Delete'), 'yebab-workflow/states/delete/' . $event->state_id),
+    );
+  }
+  if (!$rows) {
+    $rows[] = array(array('data' => t('No States available.'), 'colspan' => 4));
+  }
+  $output = '';
+  $output .= theme('table', $header, $rows);
+  $output .= theme('pager', NULL, 50, 0);
+
+  return $output;
+}
+
+/**
+ *
+ */
+function yebab_workflow_add_states() {
+  $form = array();
+  $sid = arg(3);
+  if (isset($sid) && is_numeric($sid)) {
+    $state = db_result(db_query("SELECT state_name FROM {yebab_workflow_custom_states} WHERE state_id= %d", $sid));
+    $form['sid'] = array(
+      '#type' => 'hidden',
+      '#value' => $sid,
+    );
+  }  
+  $form['custom_state'] = array(
+    '#type' => 'textfield',
+    '#title' => t('State'),
+    '#required' => TRUE,
+    '#default_value' => isset($state)? $state : '',
+    '#weight' => -50,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+  return $form;
+}
+
+/**
+ * Implementation of hook_submit
+ */
+function yebab_workflow_add_states_submit ($form, &$form_state) {
+  if (isset($form_state['values']['sid'])) {
+    db_query("UPDATE {yebab_workflow_custom_states} SET state_name= '%s' WHERE state_id = %d", $form_state['values']['custom_state'], $form_state['values']['sid']);
+  }
+  else {
+    db_query ("INSERT INTO {yebab_workflow_custom_states} (state_name) VALUES ('%s')", $form_state['values']['custom_state']);
+  }
+  $form_state['redirect'] = array('yebab-workflow/states/list');
+}
+
+/**
+ * Function to delete custome state
+ */
+function yebab_workflow_delete_state($sid) {
+  db_query("DELETE FROM {yebab_workflow_custom_states} WHERE state_id = %d", $sid);
+  drupal_goto ('yebab-workflow/states'); 
+}
+
+/**
+ * To hide/show approval tab based on the content type settings and approval permission
+ */
+function _yebab_workflow_access ($node) {
+  
+  if (variable_get('yebab_workflow_' . $node->type, 0) && user_access('yebab workflow approval')) {
+    return true;
+  }
+}
+
+/**
+ * Implementation of hook_views_api().
+ */
+function yebab_workflow_views_api() {
+  return array(
+    'api' => 2,
+    'path' => drupal_get_path('module', 'yebab_workflow'),
+  );
+}
+
+/**
+ * Implementation of hook_cron().
+ *
+ * Remove expired moderation log events.
+ */
+function yebab_workflow_cron() {
+  if ($log_clear = variable_get('yebab_workflow_log_clear', 0)) {
+    $time = mktime(0, 0, 0, date('m'), date('day'), date('Y'));
+    db_query('DELETE FROM {yebab_workflow_log} WHERE timestamp < %d', $time - $log_clear);
+  }
+}
+
+/**
+ * Display approval form page (For chief editors)
+ */
+function yebab_workflow_approval_form() {
+  global $user;
+  $form = array();
+  $nid = arg(1);
+  if (isset($nid) && is_numeric($nid)) {
+    $node = node_load($nid);
+  }  
+  $all = db_query("SELECT * from {yebab_workflow_states} WHERE nid = %d" , $nid);
+  while ($data = db_fetch_object($all)) {
+    $state = $data->state;
+    $comment = $data->comment;
+    $submit = $data->submit;
+  }
+  $moderator_rid = variable_get('yebab_workflow_moderators_role', '');
+  $chief_rid = variable_get('yebab_workflow_chiefeditors_role', '');
+  $form['hidden_nid'] = array(
+    '#type' => 'hidden',
+    '#value' => arg(1),
+  );
+  $form['yebab_workflow'] = array(
+    '#title' => t('yebab workflow settings'),
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+  );
+  $form['yebab_workflow']['yebab_workflow_state'] = array(
+    '#type' => 'select',
+    '#title' => t('Workflow states'),
+    '#default_value' => isset($state) ? $state : 'pending' ,
+    '#description' => t("Select current state of the node."),
+    '#options' => array_merge(array('pending' => 'pending' , 'published' => 'published', 'rejected' => 'rejected', 'needs improvement' => 'needs improvement'), yebab_workflow_get_custom_states()),
+    '#disabled' => isset($user->roles[$moderator_rid]),
+  );
+  $form['yebab_workflow']['yebab_workflow_comment'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Comment'),
+    '#default_value' => $comment,
+    '#weight' => 0,
+    '#disabled'=> isset($user->roles[$moderator_rid]) ,
+  );
+
+  $form['yebab_workflow']['format'] = filter_form();
+  
+  $form['yebab_workflow']['yebab_workflow_submit'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Submit this content.'),
+    '#default_value' => 1,//isset($submit) ? $submit : 0 ,
+    '#disabled'=> TRUE,//(isset($user->roles[$chief_rid]) || (($state == 'published' || $state == 'rejected')) )? TRUE : FALSE,
+  );
+  
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );   
+  return $form;
+}
+
+/**
+ * 
+ */
+function yebab_workflow_get_custom_states() {
+  $options = array();
+  $states = db_query("SELECT state_name FROM {yebab_workflow_custom_states}");
+  while($state = db_fetch_object($states)) {
+    $options[$state->state_name] = $state->state_name;
+  }
+  return $options;
+}
+
+/**
+ *  Yebab workflow settings form
+ */
+function yebab_workflow_settings() {
+  $form = array();
+  
+  $form['yebab_workflow'] = array(
+    '#title' => t('Yebab workflow settings'),
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+  );
+  $form['yebab_workflow']['yebab_workflow_chief_editor_receive_mails'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Send emails to chief editors'),
+    '#default_value' => variable_get('yebab_workflow_chief_editor_receive_mails', ''),
+  );
+  $form['yebab_workflow']['yebab_workflow_moderators_role'] = array(
+    '#type' => 'select',
+    '#title' => t('Moderators role'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('yebab_workflow_moderators_role', ''),
+    '#options' => user_roles(),
+  );
+  $form['yebab_workflow']['yebab_workflow_chiefeditors_role'] = array(
+    '#type' => 'select',
+    '#title' => t('Chief editors role'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('yebab_workflow_chiefeditors_role', ''),
+    '#options' => user_roles(),
+  );
+  $period = drupal_map_assoc(array(86400, 172800, 259200, 604800, 1209600, 2419200, 4838400, 7257600), 'format_interval');
+  $period[0] = t('Never');
+  $form['yebab_workflow']['yebab_workflow_log_clear'] = array(
+    '#type' => 'select',
+    '#title' => t('Discard log entries older than'),
+    '#default_value' => variable_get('yebab_workflow_log_clear', 0),
+    '#options' => $period,
+    '#description' => t('The time log entries should be kept. Older entries will be automatically discarded. Requires crontab.')
+  );
+  $form['yebab_workflow']['yebab_workflow_moderators_mail'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Send moderators email notification to'),
+    '#default_value' => variable_get('yebab_workflow_moderators_mail', ''),
+    '#description' => t('Enter a comma seprated emails to receive notifications'),
+  );
+  $form['yebab_workflow']['yebab_workflow_chiefs_mail'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Send chief editors email notification to'),
+    '#default_value' => variable_get('yebab_workflow_chiefs_mail', ''),
+    '#description' => t('Enter a comma seprated emails to receive notifications'),
+  );
+  $form['yebab_workflow']['yebab_workflow_site_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Current site Url'),
+    '#default_value' => variable_get('yebab_workflow_site_url', ''),
+    '#description' => t('Must start with http:// and ends with a trailing slash'),
+  );
+  return system_settings_form($form);
+}
+
+/**
+ * Adding state field and comment field to the choosen content types
+ */
+function yebab_workflow_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'node_type_form' && isset($form['identity']['type'])) {
+    $form['workflow']['yebab_workflow'] = array(
+      '#type' => 'radios',
+      '#title' => t('Yebab workflow'),
+      '#default_value' => variable_get('yebab_workflow_'. $form['#node_type']->type, 0),
+      '#options' => array(0 => t('Disabled'), 1 => t('Enabled')),
+      '#description' => t('Enable or disable Yebab workflow on this content type?'),
+    );
+  }
+  // Change exposed date filter type to date not textfield 
+  if ($form_id == 'views_exposed_form') {
+    $view = &$form_state['view'];
+    $display = &$form_state['display'];
+    if ($view->name == 'yebab_workflow' && $display->id == 'page_1') {
+      $form['created']['min'] = array (
+        '#type' => 'date',
+        '#title' => 'Min date',
+        '#default_value' => $form_state['values']['created'],
+      );
+      $form['created']['max'] = array (
+        '#type' => 'date',
+        '#title' => 'Max date',
+        '#default_value' => $form_state['values']['created'],
+      );
+      $form['#submit'][] = 'yebab_workflow_created_filter_submit';
+    }
+  }
+  if ($view->name == 'yebab_workflow_log' && $display->id == 'page_1') {
+      $form['timestamp']['min'] = array (
+        '#type' => 'date',
+        '#title' => 'Min date',
+        '#default_value' => $form_state['values']['timestamp'],
+      );
+      $form['timestamp']['max'] = array (
+        '#type' => 'date',
+        '#title' => 'Max date',
+        '#default_value' => $form_state['values']['timestamp'],
+      );
+      $form['#submit'][] = 'yebab_workflow_date_filter_submit';
+    }
+}
+
+/**
+ * Implementation of hook_submit to filter by selected date
+ */
+function yebab_workflow_date_filter_submit($form, &$form_state) {
+  $min = $form_state['values']['timestamp']['min']['year'] . '-' .  $form_state['values']['timestamp']['min']['month'] . '-' . $form_state['values']['timestamp']['min']['day'] . ' 00:00:00';
+  
+  $max = $form_state['values']['timestamp']['max']['year'] . '-' .  $form_state['values']['timestamp']['max']['month'] . '-' . $form_state['values']['timestamp']['max']['day'] . ' 00:00:00';
+  $form_state['view']->exposed_input['timestamp']['min'] = $min;
+  $form_state['view']->exposed_input['timestamp']['max'] = $max;
+  $form_state['view']->exposed_data['timestamp']['min'] = $min;
+  $form_state['view']->exposed_data['timestamp']['max'] = $max;
+  $form_state['view']->exposed_raw_input['timestamp']['min'] = $min;  
+  $form_state['view']->exposed_raw_input['timestamp']['max'] = $max;  
+}
+
+
+/**
+ * Implementation of hook_submit to filter by selected date
+ */
+function yebab_workflow_created_filter_submit($form, &$form_state) {
+  $min = $form_state['values']['created']['min']['year'] . '-' .  $form_state['values']['created']['min']['month'] . '-' . $form_state['values']['created']['min']['day'] . ' 00:00:00';
+  
+  $max = $form_state['values']['created']['max']['year'] . '-' .  $form_state['values']['created']['max']['month'] . '-' . $form_state['values']['created']['max']['day'] . ' 00:00:00';
+  $form_state['view']->exposed_input['created']['min'] = $min;
+  $form_state['view']->exposed_input['created']['max'] = $max;
+  $form_state['view']->exposed_data['created']['min'] = $min;
+  $form_state['view']->exposed_data['created']['max'] = $max;
+  $form_state['view']->exposed_raw_input['created']['min'] = $min;  
+  $form_state['view']->exposed_raw_input['created']['max'] = $max;  
+}
+
+
+/**
+ * yebab workflow approval form submit
+ */
+function yebab_workflow_approval_form_submit($form, &$form_state) {
+  global $user;
+  $moderator_rid = variable_get('yebab_workflow_moderators_role', '');
+  $chief_rid = variable_get('yebab_workflow_chiefeditors_role', '');
+  $nid = db_result(db_query("SELECT nid FROM {yebab_workflow_states} WHERE nid = %d", $form_state['values']['hidden_nid']));
+  $node = node_load($form_state['values']['hidden_nid']);
+  $node_user = user_load(array('uid' => $node->uid));
+  // Check if the record already exists
+  if (empty($nid)) {
+    db_query("INSERT INTO {yebab_workflow_states} (nid, vid, state, comment, submit) VALUES (%d, %d, '%s', '%s', %d)", $node->nid, $node->vid, $form_state['values']['yebab_workflow_state'], $form_state['values']['yebab_workflow_comment'], 1);// $form_state['values']['yebab_workflow_submit']);
+  
+  }else {
+    db_query("UPDATE {yebab_workflow_states} SET state = '%s' , comment = '%s',  submit = %d WHERE nid = %d AND vid = %d ", $form_state['values']['yebab_workflow_state'], $form_state['values']['yebab_workflow_comment'], 1, $node->nid, $node->vid);
+  }
+
+  // Case improvement
+  if (isset($user->roles[$chief_rid])) {
+    if ($form_state['values']['yebab_workflow_state'] == 'needs improvement' || in_array($form_state['values']['yebab_workflow_state'], yebab_workflow_get_custom_states()))   {
+      db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 0, $node->nid, $node->vid);
+      db_query("UPDATE {yebab_workflow_states} SET submit = 1 WHERE nid = %d AND vid = %d", $node->nid, $node->vid);
+    }
+  }  
+  // Mail paramaters
+  $moderators_to = variable_get('yebab_workflow_moderators_mail', '');
+  $chiefs_to = variable_get('yebab_workflow_chiefs_mail', '');
+  // According to the state change the log will be saved and an email will be sent
+  $op = $form_state['values']['yebab_workflow_state'];
+  $comment = $form_state['values']['yebab_workflow_comment'];
+  $params = array('node' => $node, 'op' => t($op), 'comment' => $comment, 'username' => $node_user->name);
+  switch ($form_state['values']['yebab_workflow_state']) {
+    case 'pending':
+      db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 0, $node->nid, $node->vid);
+      _yebab_workflow_save_log($node->nid, 'pending', $node->title, $form_state['values']['yebab_workflow_comment']);
+      /*if (isset($user->roles[$moderator_rid])) {
+        $sent = drupal_mail('yebab_workflow', 'notify', $moderators_to, language_default(), $params);
+      } */ 
+      break;
+    case 'published':
+       // If node state is published update node table to change node state
+      db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 1, $node->nid, $node->vid);
+      _yebab_workflow_save_log($node->nid, 'published', $node->title, $form_state['values']['yebab_workflow_comment']);
+   /*
+      if (isset($user->roles[$chief_rid])) {
+        $sent = drupal_mail('yebab_workflow', 'notify', $moderators_to, language_default(), $params);
+      }
+   */
+      // Send email to the node creator to tell him the status of the node
+      drupal_mail('yebab_workflow', 'notify', $node_user->mail, language_default(), $params);
+      break;
+    case 'rejected':
+      db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 0, $node->nid, $node->vid);
+      _yebab_workflow_save_log($node->nid, 'rejected', $node->title, $form_state['values']['yebab_workflow_comment']);
+     /*
+      if (isset($user->roles[$chief_rid])) {
+        $sent = drupal_mail('yebab_workflow', 'notify', $moderators_to, language_default(), $params);
+      }
+      */
+      // Send email to the node creator to tell him the status of the node
+      drupal_mail('yebab_workflow', 'notify', $node_user->mail, language_default(), $params);
+
+      break;
+    case 'needs improvement':
+       db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 0, $node->nid, $node->vid);
+      _yebab_workflow_save_log($node->nid, 'needs improvement', $node->title, $form_state['values']['yebab_workflow_comment']);
+     
+     /*
+      if (isset($user->roles[$chief_rid])) {
+        $sent = drupal_mail('yebab_workflow', 'notify', $moderators_to, language_default(), $params);
+      }
+      */
+      // Send email to the node creator to tell him the status of the node
+      drupal_mail('yebab_workflow', 'notify', $node_user->mail, language_default(), $params);
+
+      break;    
+  }
+  if (in_array($form_state['values']['yebab_workflow_state'], yebab_workflow_get_custom_states())) {
+    db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 0, $node->nid, $node->vid);
+    _yebab_workflow_save_log($node->nid, $form_state['values']['yebab_workflow_state'], $node->title, $form_state['values']['yebab_workflow_comment']);
+   /*
+    if (isset($user->roles[$chief_rid])) {
+      $sent = drupal_mail('yebab_workflow', 'notify', $moderators_to, language_default(), $params);      
+    }
+    */
+  }
+  // Send email to editor case content is submitted
+   
+  if ($form_state['values']['yebab_workflow_submit'] == 1 && variable_get('yebab_workflow_chief_editor_receive_mails', '') == 1) {
+    $params = array('node' => $node, 'op' => 'Submitted', 'comment' => $comment);
+    if (isset($user->roles[$moderator_rid])) {
+      $sent = drupal_mail('yebab_workflow', 'notify', $chiefs_to, language_default(), $params);      
+    }
+  }
+ 
+  $form_state['redirect'] = array('node/' . $node->nid);
+  drupal_set_message (t("Your changes are saved"));
+}
+
+/**
+ *  Implementating hook_nodeapi()
+ */
+function yebab_workflow_nodeapi(&$node, $op) {
+  global $user;
+  $enabled = variable_get('yebab_workflow_'. $node->type, 0);
+  if ($enabled) {
+    $moderator_rid = variable_get('yebab_workflow_moderators_role', '');
+    $chief_rid = variable_get('yebab_workflow_chiefeditors_role', '');
+
+    $submit =  db_result(db_query("SELECT submit FROM {yebab_workflow_states} WHERE nid = %d", $node->nid));
+    $workflow_state = db_result(db_query("SELECT state FROM {yebab_workflow_states} WHERE nid = %d", $node->nid));
+
+    $chiefs_to = variable_get('yebab_workflow_chiefs_mail', '');
+    $params = array('node' => $node, 'op' => $op);
+  
+    if (variable_get('yebab_workflow_chief_editor_receive_mails', '') == 1) {
+      switch ($op) {
+        case 'update':
+          if ($submit && isset($user->roles[$moderator_rid])) {
+            $sent = drupal_mail('yebab_workflow', 'notify', $chiefs_to, language_default(), $params);
+             db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 0, $node->nid, $node->vid);
+             db_query("UPDATE {yebab_workflow_states} SET state = '%s' , submit = 1 WHERE nid = %d",  'pending', $node->nid);
+          }
+          break;
+        case 'delete':
+          if ($submit && isset($user->roles[$moderator_rid])) {
+            $sent = drupal_mail('yebab_workflow', 'notify', $chiefs_to, language_default(), $params);
+          } 
+          break;
+      }
+    }
+    else {
+      switch ($op) {
+        case 'update':
+          if ($submit && isset($user->roles[$moderator_rid])) {
+            db_query("UPDATE {node} SET status = %d WHERE nid = %d AND vid = %d", 0, $node->nid, $node->vid);
+            db_query("UPDATE {yebab_workflow_states} SET state = '%s' , submit = 1 WHERE nid = %d",  'pending', $node->nid);
+          }
+          break;
+       }  
+    }
+    if ($node->type == 'yebab_shop' && $node->shop_type == 1) {
+      switch ($op) {
+        case 'update':
+          if ($node->status == 1) {
+            $time = mktime(0, 0, 0, date('m'), date('day'), date('Y'));
+            db_query("UPDATE {yebab_workflow_states} SET state = '%s' , submit = 1, last_publish_date = %d WHERE nid = %d",  'published', $time, $node->nid);
+          }
+          elseif ($node->status == 0) {
+            db_query("UPDATE {yebab_workflow_states} SET state = '%s' , submit = 1 WHERE nid = %d",  'pending', $node->nid);
+          }
+          // If user is moderator and the state is "needs improvements" change it to pending when submitted
+          if (isset($user->roles[$moderator_rid]) && $workflow_state == 'needs improvement') {
+            db_query("UPDATE {yebab_workflow_states} SET state = '%s' , submit = 1 WHERE nid = %d",  'pending', $node->nid);
+          }
+          break;
+      }  
+    }
+  }
+}
+
+/**
+ * Function for saving log in the log table
+ */
+function _yebab_workflow_save_log($nid, $state, $title, $message) {
+  global $user;
+  $time = mktime(0, 0, 0, date('m'), date('day'), date('Y'));
+  db_query("INSERT INTO {yebab_workflow_log} (nid, uid, state, title, message, timestamp) VALUES (%d, %d, '%s', '%s', '%s', %d)", $nid, $user->uid, $state, $title, $message, $time);
+}
+
+/**
+ * Function to send an email with the updated state
+ */
+function yebab_workflow_mail($key, &$message, $params) {
+  global $base_path;
+  $username = $params['username'];
+  $language = $message['language'];
+
+  $variables = user_mail_tokens($params['account'], $language);
+  $node =  $params['node'];
+
+  $op = $params['op'];
+  $comment = $params['comment'];
+
+  $url = "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "'>" . $node->title . "</a>";
+  $workflow_url = "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "/yebab-workflow'>" . $node->title . "</a>";
+  $shop_edit = "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "/edit'>" . $node->title . "</a>";
+  
+  switch ($op) {
+    case 'needs improvement':
+      $op = 'مطلوب تعديل';
+      break;
+   case 'pending' :
+      $op = 'بإنتظار المراجعة';
+      break;   
+   case 'published':
+      $op = 'منشور';
+      break;     
+   case 'rejected':
+      $op = 'مرفوض';
+     break;     
+   case 'delete' :
+      $op = 'مرفوض';
+      break;
+  }
+
+  $bd = '<div dir="rtl"><br />' .  t("مرحباً $username,") . "<br /><br /><br /> صفحة  $url مصنفة ضمن  ($op)  ";
+  if ($comment != null && $comment != '') {
+     $bd .= "و تعليق الادارة على الصفحة هو :" . "<br /><br />" . $comment . "<br /><br />";
+  }
+  $bd .= "لمعرفة التفاصيل يرجى الضغط على هذا " . "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "/yebab-workflow'> الرابط </a><br /><br />";
+  switch ($op) {
+    case 'مطلوب تعديل':
+    case 'تعديلات مطلوبة':
+      $bd .= "لتعديل معلومات المحل يرجى الضغط هذا هذا". "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "/edit'> الرابط </a><br /><br />";
+      break;
+   case 'بإنتظار المراجعة' :
+      $bd .= "لزيارة الصفحة يرجى الضغط  على هذا ." .  "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "'>" . "الرابط" . "</a>";
+      break;   
+   case 'منشور':
+     $bd .= "لزيارة الصفحة يرجى الضغط على  هذا " .  "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "'>" . "الرابط" . "</a>";
+     break;     
+   case 'مرفوض':
+     $bd .= "لتعديل معلومات المحل (اذا كان تعليق الادارة يطلب ذلك) يرجى الضغط على هذا ". "<a href ='" . variable_get('yebab_workflow_site_url', '') . 'node/' . $node->nid . "/edit'> الرابط </a><br /><br />";
+     break;     
+  }
+ 
+  switch($key) {
+    case 'notify':
+      $message['headers'] = array_merge(
+        $message['headers'], 
+          array(
+            'MIME-Version' => '1.0',
+            'Content-Type' => 'text/html; charset=UTF-8; format=flowed',
+            'Content-Transfer-Encoding' => '8Bit',
+            'X-Mailer' => 'Drupal'
+          )
+      );
+      $message['subject'] = t($node->title . ' - ' . $op . ' | !site ', $variables, $language->language);
+     
+      $bd .=  "<br /><br />شكراً  <br /> <br /> يباب.كوم <br /></div>";
+      $message['body'][] = $bd; 
+      break;
+  }
+}
+
+/** 
+ * Implementation of hook_validate
+ */ 
+function yebab_workflow_approval_form_validate($form, &$form_state) {
+  $chief_rid = variable_get('yebab_workflow_chiefeditors_role', '');
+    if(!isset($form_state['values']['yebab_workflow_comment']) || $form_state['values']['yebab_workflow_comment'] == '') {
+      if ($form_state['values']['yebab_workflow_state'] == 'rejected' || $form_state['values']['yebab_workflow_state'] == 'needs improvement') {
+        form_set_error('yebab_workflow_comment', t('You must enter a comment'));
+    }
+  }  
+}
+

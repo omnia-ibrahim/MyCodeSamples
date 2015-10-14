@@ -1,0 +1,100 @@
+<?php 
+
+/**
+ * Implementation of hook_schema().
+ */
+function yebab_albums_schema() {
+  $schema = array();
+
+  $schema['yebab_shop_images'] = array(
+    'description' => 'Many Shops to Many Images',
+    'fields' => array (
+      'id' => array (
+        'description' => 'The primary identifier for a node.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE
+      ),
+      'snid' => array(
+        'description' => 'The {node}.nid for the shop.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0
+      ),
+      'inid' => array(
+        'description' => 'The {node}.nid for the image.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0
+      ),
+      'visible' => array(
+        'description' => 'Boolean indicating whether the image should be displayed in the album or not.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1
+      ),
+    ),
+    'indexes' => array(
+      'shop_images' => array('snid', 'inid'),
+    ),
+    'primary key' => array('id'),
+  );
+
+  $schema['yebab_useralbum_info'] = array(
+    'description' => 'Save user album info',
+    'fields' => array (
+      'nid' => array(
+        'description' => 'The {node}.nid for the shop.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0
+      ),
+      'album_status' => array(
+        'description' => 'The visibility of the album',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0
+      ),
+    ),
+    'indexes' => array(
+      'album' => array('nid'),
+      'status' => array('album_status'),
+      'album_status' => array('nid', 'album_status')
+    ),
+    'primary key' => array('nid', 'album_status'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Insert field to indicate if this album is a featured album or not
+ */
+function yebab_albums_update_1 () {
+  $ret = array();
+  db_add_field($ret, 'yebab_useralbum_info', 'featured_album', array('type' => 'int', 'not null' => TRUE, 'default' => 0));
+  return $ret;
+}
+
+/**
+ * Insert field to indicate if this album is a featured album or not
+ */
+function yebab_albums_update_2 () {
+  $ret = array();
+  db_add_field($ret, 'yebab_useralbum_info', 'related_shop', array('type' => 'int', 'not null' => TRUE, 'default' => 0));
+  return $ret;
+}
+
+/**
+ *
+ */
+function yebab_albums_install() {
+  drupal_install_schema('yebab_albums');
+}
+
+/**
+ *
+ */
+function yebab_albums_uninstall() {
+  drupal_uninstall_schema('yebab_albums');
+}
